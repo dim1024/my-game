@@ -31,7 +31,7 @@ body{background:radial-gradient(ellipse at 50% -20%,#27375a,#0d1525 50%,#080e19)
 <div id="app">
 <header class="topbar"><div><div class="logo">⚡ POWER <em>BATTLE</em></div><div class="subtitle">THE EXPONENT QUEST · V4</div></div><div class="toptools"><div class="pill">🏆 BEST WAVE <span id="bestWave">1</span></div><button class="secondarybtn" id="soundBtn">🔇 SOUND OFF</button><button class="secondarybtn" id="helpBtn">? HELP</button></div></header>
 <main class="game">
-<div class="statusrow"><div class="status"><div class="name"><span>🛡️ <span id="heroName">HERO</span></span><span id="heroHpText">100 / 100</span></div><div class="hpbar"><div id="heroHp" class="hpfill"></div></div></div><div class="wavebadge"><b id="waveLabel">WAVE 1 / 12</b><strong id="locationLabel">THE RUINS</strong></div><div class="status right"><div class="name"><span id="enemyName">ENEMY</span><span id="enemyHpText">60 / 60</span></div><div class="hpbar"><div id="enemyHp" class="hpfill enemy"></div></div></div></div>
+<div class="statusrow"><div class="status"><div class="name"><span>🛡️ <span id="heroName">HERO</span></span><span id="heroHpText">100 / 100</span></div><div class="hpbar"><div id="heroHp" class="hpfill"></div></div></div><div class="wavebadge"><b id="waveLabel">WAVE 1 / 8</b><strong id="locationLabel">THE RUINS</strong></div><div class="status right"><div class="name"><span id="enemyName">ENEMY</span><span id="enemyHpText">60 / 60</span></div><div class="hpbar"><div id="enemyHp" class="hpfill enemy"></div></div></div></div>
 <section class="arena" aria-label="Animated battle between the hero and an enemy"><canvas id="battleCanvas"></canvas><div id="combatLog" class="combatlog" aria-live="polite">An enemy approaches…</div></section>
 <div class="bodygrid"><section class="questionpanel"><div class="qheader"><span id="questionCount">QUESTION 1</span><span id="skillTag" class="skill">EXPONENTS</span></div><div id="question" class="prompt" aria-live="polite">Ready to battle?</div><div id="answers" class="answers"></div><div id="feedback" class="feedback" aria-live="polite"></div><button class="primary nextbtn" id="continueBtn">NEXT CHALLENGE →</button></section><aside class="sidebar"><section class="sidepanel"><div class="panelhead">🏹 ENCHANT YOUR NEXT ARROW</div><div class="spellgrid"><button class="spell active" data-spell="strike">🏹 QUICK ARROW<small>Free · 24 DMG</small></button><button class="spell" data-spell="shield">🛡️ WARD ARROW<small>2 mana · +guard</small></button><button class="spell" data-spell="blast">🔥 FLAME ARROW<small>3 mana · big DMG</small></button><button class="spell" data-spell="heal">💚 LIFE ARROW<small>4 mana · +HP</small></button></div><div class="manatrack"><div id="manaBar"></div></div><div class="smallline"><span>⚡ MANA</span><span id="manaText">0 / 5</span></div></section><section class="sidepanel"><div class="panelhead">🏅 YOUR RUN</div><div class="statgrid"><div class="statbox"><strong id="streakText">0</strong><span>🔥 STREAK</span></div><div class="statbox"><strong id="coinText">0</strong><span>🪙 COINS</span></div><div class="statbox"><strong id="correctText">0</strong><span>✓ CORRECT</span></div><div class="statbox"><strong id="mistakeText">0</strong><span>✕ MISTAKES</span></div></div></section></aside></div>
 <div class="footer"><span>KEYBOARD: 1–4 choose answers · ENTER to continue</span><span>Correct answer = attack · Wrong answer or long wait = enemy attack</span></div>
@@ -66,7 +66,17 @@ const MONSTERS = [
   {name:'SKY DEVOURER',place:'RUINED SKY',kind:'dragon',main:'#283c72',glow:'#ffa3c3',shots:['fire','shock','dark']},
   {name:'THE EXPONENT LORD',place:'THE FINAL CITADEL',kind:'lord',main:'#332a50',glow:'#ff5688',shots:['dark','shock','fire','poison']}
 ];
-const BOSSES = new Set([4,8,12]);
+const BOSSES = new Set([4,8]);
+const MAX_WAVE = 8;
+const BOSS_KINDS = new Set(['golem','hydra','dragon','lord']);
+// Every run gets a fresh random line-up: 6 regular monsters + 2 bosses (waves 4 and 8). Only looks change.
+function buildRoster(){
+ const regular=shuffle(MONSTERS.filter(m=>!BOSS_KINDS.has(m.kind))).slice(0,6);
+ const bosses=shuffle(MONSTERS.filter(m=>BOSS_KINDS.has(m.kind))).slice(0,2);
+ const roster=[];let r=0,b=0;
+ for(let w=1;w<=MAX_WAVE;w++)roster.push(BOSSES.has(w)?bosses[b++]:regular[r++]);
+ return roster;
+}
 const SPELL_COST = {strike:0,shield:2,blast:3,heal:4};
 const SHOTS = {
   acid:{name:'ACID BOLT',color:'#78ffaa',core:'#dbffd7',size:15},
@@ -105,7 +115,7 @@ function closeModal(){$('overlay').classList.add('hidden');}
 function battleLog(text){$('combatLog').textContent=text;}
 function newGame(name){
  return {
-   player:(name||'ARCANE RANGER').trim().slice(0,28), started:Date.now(), wave:1,
+   player:(name||'ARCANE RANGER').trim().slice(0,28), started:Date.now(), wave:1, roster:buildRoster(),
    hp:100,maxHp:100,enemyHp:60,enemyMax:60,mana:0,guard:0,
    selectedSpell:'strike',attackBonus:0,rewardSelected:null,rewards:[],
    coins:0,correct:0,mistakes:0,attempts:0,timedHits:0,blocked:0,streak:0,bestStreak:0,
@@ -127,11 +137,11 @@ function startGame(name){
  closeModal();spawnEnemy();newQuestion();render();
 }
 function spawnEnemy(){
- const m=MONSTERS[game.wave-1];const boss=BOSSES.has(game.wave);
+ const m=game.roster[game.wave-1];const boss=BOSSES.has(game.wave);
  game.enemyMax=(boss?115:62)+(game.wave-1)*8;game.enemyHp=game.enemyMax;
  game.guard=0;game.selectedSpell='strike';
  $('enemyName').textContent=m.name;$('locationLabel').textContent=m.place;
- $('waveLabel').textContent=`WAVE ${game.wave} / 12`;
+ $('waveLabel').textContent=`WAVE ${game.wave} / ${MAX_WAVE}`;
 
  battleLog(`${m.name} is hunting you. Answer to fire!`);
 }
@@ -255,7 +265,7 @@ function heroAttack(spell,damage){
 }
 function enemyAttack(reason){
  if(!game||phase!=='play')return;
- const monster=MONSTERS[game.wave-1],kind=sample(monster.shots);
+ const monster=game.roster[game.wave-1],kind=sample(monster.shots);
  let damage=rand(10,15)+Math.floor((game.wave-1)/3)*2+(BOSSES.has(game.wave)?3:0);
  let blocked=false;
  if(game.guard>0){damage=Math.max(0,damage-18);game.guard--;game.blocked++;blocked=true;}
@@ -320,10 +330,10 @@ function winStage(){
  phase='reward';game.enemiesDefeated++;
  game.coins+=25+game.wave*8+(BOSSES.has(game.wave)?60:0);
  bestWave=Math.max(bestWave,game.wave);saveBest();render();
- if(game.wave===12){finishGame();return;}
+ if(game.wave===MAX_WAVE){finishGame();return;}
  game.rewardSelected=null;
  showModal(`<div class="heroemblem">${BOSSES.has(game.wave)?'🏆':'⚔️'} ✨</div>
- <div class="eyebrow">WAVE ${game.wave} / 12 CLEARED</div><h2>${BOSSES.has(game.wave)?'BOSS DEFEATED!':'ENEMY DEFEATED!'}</h2>
+ <div class="eyebrow">WAVE ${game.wave} / ${MAX_WAVE} CLEARED</div><h2>${BOSSES.has(game.wave)?'BOSS DEFEATED!':'ENEMY DEFEATED!'}</h2>
  <p>Your knowledge won the battle. Pick <b>ONE</b> permanent upgrade before the next enemy attacks.</p>
  <div class="rewardcards" role="group" aria-label="Choose one upgrade">
  <button class="reward" data-reward="hp"><span class="symbol">❤️</span><strong>IRON HEART</strong><span>+25 MAX HP<br>Restore 35 HP</span></button>
@@ -355,7 +365,7 @@ function winStage(){
  });
 }
 function nextWave(){
- if(!game||game.wave>=12)return;
+ if(!game||game.wave>=MAX_WAVE)return;
  game.wave++;game.hp=Math.min(game.maxHp,game.hp+10);
  phase='play';answered=false;projectiles=[];particles=[];floaters=[];
  closeModal();spawnEnemy();newQuestion();render();
@@ -372,9 +382,9 @@ function statsHtml(){
  const mins=Math.floor((Date.now()-game.started)/60000),secs=Math.floor((Date.now()-game.started)/1000)%60;
  const rate=accuracy(game.correct,game.mistakes)??0;
  return {rows,advice,mins,secs,rate,html:`<div class="report">
-  <div class="report-head"><div class="eyebrow">🏅 STUDENT COMPLETION RECORD</div><h3>CRYSTAL SAVIOR — 12 / 12 WAVES CLEARED</h3>
+  <div class="report-head"><div class="eyebrow">🏅 STUDENT COMPLETION RECORD</div><h3>CRYSTAL SAVIOR — ${MAX_WAVE} / ${MAX_WAVE} WAVES CLEARED</h3>
   <p><b>Student:</b> ${escapeHtml(game.player)} &nbsp; | &nbsp; <b>Date:</b> ${escapeHtml(new Date().toLocaleDateString('en-US'))}</p>
-  <p>All 12 enemies defeated, including the final Exponent Lord.</p></div>
+  <p>All ${MAX_WAVE} enemies defeated, including the final boss: ${game.roster[MAX_WAVE-1].name}.</p></div>
   <div class="report-stats"><div><b>${game.correct}</b><span>CORRECT</span></div><div><b>${game.mistakes}</b><span>WRONG ANSWERS</span></div><div><b>${rate}%</b><span>ACCURACY</span></div><div><b>${game.bestStreak}</b><span>BEST STREAK</span></div><div><b>${game.timedHits}</b><span>TIME-OUT ATTACKS</span></div><div><b>${game.attempts}</b><span>TOTAL QUESTIONS</span></div><div><b>${game.enemiesDefeated}</b><span>ENEMIES DEFEATED</span></div><div><b>${mins}m ${secs}s</b><span>PLAY TIME</span></div></div>
   <h3 style="margin:15px 0 4px">Math Skills Breakdown</h3>
   <table class="reporttable"><thead><tr><th>Topic</th><th>Correct</th><th>Wrong</th><th>Accuracy</th></tr></thead><tbody>
@@ -384,11 +394,11 @@ function statsHtml(){
  </div>`};
 }
 function finishGame(){
- phase='finished';bestWave=12;saveBest();
+ phase='finished';bestWave=MAX_WAVE;saveBest();
  const report=statsHtml();
  showModal(`<div class="heroemblem">🏆 ⚡ 🐉</div><div class="eyebrow">ALL LEVELS COMPLETED</div>
- <h1>VICTORY!</h1><p>THE EXPONENT LORD HAS FALLEN!<br>Show this page to your teacher.</p>
- ${report.html}<span class="teacherlabel">✓ COMPLETE · 12/12 STAGES</span>
+ <h1>VICTORY!</h1><p>${game.roster[MAX_WAVE-1].name} HAS FALLEN!<br>Show this page to your teacher.</p>
+ ${report.html}<span class="teacherlabel">✓ COMPLETE · ${MAX_WAVE}/${MAX_WAVE} STAGES</span>
  <div class="actions nonprint"><button class="primary" id="printReport">🖨️ PRINT / SAVE AS PDF</button>
  <button class="smallbutton" id="downloadReport">⬇ DOWNLOAD REPORT</button>
  <button class="smallbutton" id="playAgain">↺ PLAY AGAIN</button></div>
@@ -400,7 +410,7 @@ function finishGame(){
 }
 function downloadReport(rep){
  const lines=[
- 'POWER BATTLE — EXPONENT QUEST','COMPLETION REPORT — 12/12 WAVES CLEARED',
+ 'POWER BATTLE — EXPONENT QUEST',`COMPLETION REPORT — ${MAX_WAVE}/${MAX_WAVE} WAVES CLEARED`,
  `Student: ${game.player}`,`Date: ${new Date().toLocaleString('en-US')}`,
  `Correct: ${game.correct}`,`Wrong answers: ${game.mistakes}`,`Accuracy: ${rep.rate}%`,
  `Best streak: ${game.bestStreak}`,`Time-out enemy attacks: ${game.timedHits}`,`Questions: ${game.attempts}`,
@@ -416,7 +426,7 @@ function gameOver(){
  if(!game||phase==='over')return;
  phase='over';bestWave=Math.max(bestWave,game.wave);saveBest();
  showModal(`<div class="heroemblem">🛡️ ⚡</div><div class="eyebrow">THE HERO CAN TRY AGAIN</div><h2>THE BATTLE ISN'T OVER</h2>
- <p>${escapeHtml(game.player)} reached wave ${game.wave} of 12. Every mistake teaches you something. Return stronger!</p>
+ <p>${escapeHtml(game.player)} reached wave ${game.wave} of ${MAX_WAVE}. Every mistake teaches you something. Return stronger!</p>
  <div class="features"><div class="feature"><b>${game.correct}</b>CORRECT</div><div class="feature"><b>${game.mistakes}</b>WRONG ANSWERS</div><div class="feature"><b>${game.timedHits}</b>TIME-OUT ATTACKS</div></div>
  <button id="retry" class="primary">↺ TRY A NEW RUN</button> <button id="changeHero" class="secondarybtn">⚔️ CHANGE HERO</button>`);
  $('retry').onclick=()=>startGame(game.player);
@@ -837,7 +847,7 @@ function buildHeroPicker(){
 }
 
 function drawMonster(x,y,t){
- const monster=MONSTERS[(game?.wave||1)-1];
+ const monster=game?game.roster[game.wave-1]:MONSTERS[0];
  const kind=monster.kind,main=monster.main,glow=monster.glow,boss=BOSSES.has(game?.wave||1);
  const s=clamp(Math.min(sceneW/820,sceneH/260),.56,1.19)*(boss?1.03:1.0);
  const hover=Math.sin(t*2.7+(game?.wave||1))*4;
